@@ -102,7 +102,7 @@ df_ranked = df_result.sort_values('attrition_prob', ascending=False).reset_index
 
 # show only top 3 in preview
 st.subheader("Top 3 highest-risk employees (by predicted probability)")
-st.dataframe(df_ranked.head(3))
+st.dataframe(df_ranked.head(10))
 
 # ---- Compute linear contributions (fast, for logistic) ----
 def compute_contribs(pipe, raw_df, feature_names):
@@ -264,48 +264,79 @@ def call_openrouter_chat(prompt, model="meta-llama/llama-3-8b-instruct", max_tok
         return {"error": "Unexpected response format", "raw": str(resp)[:2000]}
     return {"text": assistant_text}
 
-# robust JSON extractor: tries direct json.loads, code-fence stripping, substring extraction, ast.literal_eval fallback
+# ---- FIXED robust JSON extractor (brace-scanning) ----
 def extract_json_from_text(txt: str):
+    """
+    Robustly extract a JSON object from a text string returned by the model.
+    Strategy:
+      1) Try json.loads on the cleaned text.
+      2) Scan for the first balanced {...} substring (brace counting) and try to parse it.
+      3) Looser regex fallback to extract any {...} and try parsing.
+      4) Return None if nothing parses.
+    """
     if not isinstance(txt, str):
         return None
+
     cleaned = txt.strip()
-    # remove common prefix
+    # remove common prefix like "Here is the output:"
     cleaned = re.sub(r"(?i)^here is the output:\s*", "", cleaned)
-    # remove leading/trailing code fences
+    # remove leading/trailing code fences ``` or ```json
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
-    # attempt direct json loads first
+
+    # 1) try direct json loads
     try:
         return json.loads(cleaned)
     except Exception:
         pass
-    # try to find the first {...} substring that looks like JSON
-    m = re.search(r"\{(?:[^{}]|(?R))*\}", cleaned, flags=re.DOTALL)
+
+    # 2) brace-scanning: find first balanced { ... }
+    first = cleaned.find("{")
+    if first != -1:
+        depth = 0
+        start_idx = None
+        for i in range(first, len(cleaned)):
+            ch = cleaned[i]
+            if ch == "{":
+                if start_idx is None:
+                    start_idx = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and start_idx is not None:
+                    candidate = cleaned[start_idx:i+1]
+                    # try parsing candidate
+                    try:
+                        return json.loads(candidate)
+                    except Exception:
+                        # try to normalize quotes then parse
+                        try:
+                            cand2 = candidate.replace("“", '"').replace("”", '"').replace("'", '"')
+                            return json.loads(cand2)
+                        except Exception:
+                            try:
+                                return ast.literal_eval(candidate)
+                            except Exception:
+                                # give up on this candidate and continue looking
+                                start_idx = None
+                                continue
+
+    # 3) loose regex fallback (non-recursive)
+    m = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
     if m:
         candidate = m.group(0)
         try:
             return json.loads(candidate)
         except Exception:
-            # try ast literal eval as fallback (handles single quotes)
             try:
-                return ast.literal_eval(candidate)
+                cand2 = candidate.replace("“", '"').replace("”", '"').replace("'", '"')
+                return json.loads(cand2)
             except Exception:
-                pass
-    # try to find a Python dict-like substring
-    # This tries a looser approach: locate first "{" and last "}"
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidate = cleaned[start:end+1]
-        # replace smart quotes
-        candidate = candidate.replace("“", '"').replace("”", '"').replace("'", '"')
-        try:
-            return json.loads(candidate)
-        except Exception:
-            try:
-                return ast.literal_eval(candidate)
-            except Exception:
-                pass
+                try:
+                    return ast.literal_eval(candidate)
+                except Exception:
+                    pass
+
     return None
 
 # ---- Single generate button for top 3 ----
@@ -338,15 +369,13 @@ else:
                 summary = parsed.get("summary", "").strip()
                 suggestions = parsed.get("suggestions", [])
                 if isinstance(suggestions, str):
-                    # split by newlines or bullets
                     suggestions = [s.strip() for s in re.split(r"[\n\r•\-]+", suggestions) if s.strip()]
-                # keep at most 4, pad if needed
                 suggestions = [str(s).strip() for s in suggestions][:4]
                 suggestions += ["(no suggestion)"] * max(0, 4 - len(suggestions))
                 caveat = parsed.get("caveat", "").strip()
                 outputs.append({"i": i, "summary": summary, "suggestions": suggestions, "caveat": caveat})
             else:
-                # fallback: try to interpret text as JSON string (sometimes the model returns a JSON-looking line)
+                # fallback: try to interpret text as JSON string
                 try:
                     maybe = json.loads(text.strip())
                     if isinstance(maybe, dict):
@@ -378,9 +407,9 @@ else:
                         st.write(out["raw"])
                     continue
                 if "summary" in out:
-                    st.markdown("**Executive Summary (2 lines)**")
+                    st.markdown("**Executive Summary**")
                     st.write(out["summary"])
-                    st.markdown("**Actionable Suggestions (4 prioritized bullets)**")
+                    st.markdown("**Actionable Suggestions**")
                     for idx, s in enumerate(out["suggestions"], start=1):
                         st.markdown(f"**{idx}.** {s}")
                     st.markdown("**Data/Model Caveat**")
