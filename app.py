@@ -106,8 +106,7 @@ df_result['attrition_prob'] = probs
 df_result['predicted_attrition'] = (df_result['attrition_prob'] >= THRESHOLD).astype(int)
 df_ranked = df_result.sort_values('attrition_prob', ascending=False).reset_index(drop=True)
 
-# show only top 3 in preview
-st.subheader("Top 3 highest-risk employees (by predicted probability)")
+st.subheader("Top 10 highest-risk employees (by predicted probability)")
 st.dataframe(df_ranked.head(10))
 
 # ---- Compute linear contributions (fast, for logistic) ----
@@ -248,7 +247,6 @@ def call_openrouter_chat(prompt, model="meta-llama/llama-3-8b-instruct", max_tok
         max_tokens=max_tokens,
         temperature=temperature,
     )
-    # robust extraction
     assistant_text = None
     try:
         assistant_text = getattr(resp.choices[0].message, "content", None)
@@ -270,7 +268,7 @@ def call_openrouter_chat(prompt, model="meta-llama/llama-3-8b-instruct", max_tok
         return {"error": "Unexpected response format", "raw": str(resp)[:2000]}
     return {"text": assistant_text}
 
-# ---- FIXED robust JSON extractor (brace-scanning) ----
+# ---- JSON extractor (brace-scanning) ----
 def extract_json_from_text(txt: str):
     """
     Robustly extract a JSON object from a text string returned by the model.
