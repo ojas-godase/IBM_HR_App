@@ -48,7 +48,13 @@ clf = pipe.named_steps.get('clf')
 # ---- UI ----
 st.title("Attrition Risk — Upload CSV to Rank Employees")
 st.markdown(
-    "Upload a CSV with the same column names used during model training. "
+    """
+    The app expects a plain UTF-8 CSV with a header row. Below are the actual columns found in your sample CSV (copy/paste to check):
+
+    ```
+    Age,Attrition,BusinessTravel,DailyRate,Department,DistanceFromHome,Education,EducationField,EmployeeCount,EmployeeNumber,EnvironmentSatisfaction,Gender,HourlyRate,JobInvolvement,JobLevel,JobRole,JobSatisfaction,MaritalStatus,MonthlyIncome,MonthlyRate,NumCompaniesWorked,Over18,OverTime,PercentSalaryHike,PerformanceRating,RelationshipSatisfaction,StandardHours,StockOptionLevel,TotalWorkingYears,TrainingTimesLastYear,WorkLifeBalance,YearsAtCompany,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager
+    ```
+    """
     "The app returns ranked attrition probabilities and per-employee top contributing features (approximate, linear contributions)."
 )
 
@@ -414,13 +420,13 @@ else:
                         st.markdown(f"**{idx}.** {s}")
                     st.markdown("**Data/Model Caveat**")
                     st.write(out.get("caveat", ""))
-                else:
-                    # fallback raw text - still wrap in same headings so it looks consistent
-                    st.markdown("**Executive Summary (raw)**")
-                    st.markdown(out.get("raw_text", "(no output)"))
+                # else:
+                #     # fallback raw text - still wrap in same headings so it looks consistent
+                #     st.markdown("**Executive Summary (raw)**")
+                #     st.markdown(out.get("raw_text", "(no output)"))
 
-# ---- Download ranked CSV (top 3) ----
-csv_bytes = df_ranked.head(3).to_csv(index=False).encode('utf-8')
+# ---- Download ranked CSV ----
+csv_bytes = df_ranked.head(10).to_csv(index=False).encode('utf-8')
 st.download_button("Download ranked CSV (top 3)", data=csv_bytes, file_name="ranked_attrition_top3.csv", mime="text/csv")
 
 st.markdown("---")
