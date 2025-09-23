@@ -427,7 +427,7 @@ else:
 
 # ---- Download ranked CSV ----
 csv_bytes = df_ranked.head(10).to_csv(index=False).encode('utf-8')
-st.download_button("Download ranked CSV (top 3)", data=csv_bytes, file_name="ranked_attrition_top3.csv", mime="text/csv")
+st.download_button("Download ranked CSV", data=csv_bytes, file_name="ranked_attrition.csv", mime="text/csv")
 
 st.markdown("---")
 st.markdown("**Notes:** Do not upload sensitive personal data without consent. This demo does not persist uploads on disk.")
